@@ -8,10 +8,28 @@
 
 namespace li3_couchbase\data\source;
 
+use Couchbase as CouchbaseExt;
+use lithium\core\NetworkException;
+
 /**
  * A data source adapter which allows you to connect to the Couchbase database engine.
  */
 class Couchbase extends \lithium\data\Source {
+
+	/**
+	 *
+	 */
+	public function __construct(array $config = array()) {
+		$defaults = array(
+			'host'       => 'localhost',
+			'port'       => '8091',
+			'login'      => null,
+			'password'   => null,
+			'bucket'     => 'default',
+			'persistent' => false
+		);
+		parent::__construct($config + $defaults);
+	}
 
 	/**
 	 * With no parameter, checks to see if the `couchbase` extension is installed. With a
@@ -36,12 +54,30 @@ class Couchbase extends \lithium\data\Source {
 	/**
 	 *
 	 */
-	public function connect() {}
+	public function connect() {
+		$config = $this->_config;
+		$this->_isConnected = false;
+
+		$host = $config['host'].':'.$config['port'];
+		$this->connection = new CouchbaseExt($host);
+
+		// FIXME: Always true, just raises warnings
+		if(!$this->connection) {
+			throw new NetworkException("Could not connect to the database.", 503);
+		}
+
+		return $this->_isConnected = true;
+	}
 
 	/**
 	 *
 	 */
-	public function disconnect() {}
+	public function disconnect() {
+		$this->_isConnected = false;
+		unset($this->connection);
+
+		return true;
+	}
 
 	/**
 	 *
