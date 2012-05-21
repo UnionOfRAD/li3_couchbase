@@ -8,6 +8,7 @@
 
 namespace li3_couchbase\data\source;
 
+use Exception;
 use Couchbase as CouchbaseExt;
 use lithium\core\NetworkException;
 
@@ -59,11 +60,16 @@ class Couchbase extends \lithium\data\Source {
 		$this->_isConnected = false;
 
 		$host = $config['host'].':'.$config['port'];
-		$this->connection = new CouchbaseExt($host);
+		$login = $config['login'];
+		$password = $config['password'];
+		$bucket = $config['bucket'];
+		$persistent = $config['persistent'];
 
-		// FIXME: Always true, just raises warnings
-		if(!$this->connection) {
-			throw new NetworkException("Could not connect to the database.", 503);
+		try {
+			$this->connection = new CouchbaseExt($host, $login, $password, $bucket, $persistent);
+		} catch(Exception $e) {
+			throw new NetworkException("Could not connect to the database: " . $e->getMessage(), 503);
+			return false;
 		}
 
 		return $this->_isConnected = true;
@@ -75,7 +81,6 @@ class Couchbase extends \lithium\data\Source {
 	public function disconnect() {
 		$this->_isConnected = false;
 		unset($this->connection);
-
 		return true;
 	}
 
