@@ -6,9 +6,9 @@
  * @license       http://opensource.org/licenses/bsd-license.php The BSD License
  */
 
-namespace li3_couchbase\tests\cases\data\source;
+namespace li3_couchbase\tests\cases\extensions\data\source;
 
-use li3_couchbase\data\source\Couchbase;
+use li3_couchbase\extensions\data\source\Couchbase;
 use lithium\data\Connections;
 use lithium\analysis\Inspector;
 
@@ -70,11 +70,9 @@ class CouchbaseTest extends \lithium\test\Unit {
 	public function testConnect() {
 		$result = new Couchbase($this->_dbConfig);
 		$this->assertTrue($result->isConnected());
-		$this->assertTrue(is_string($result->connection->getVersion()));
 
-		$this->assertException('/Unknown host/', function() {
-			$result = new Couchbase(array('host' => 'invalidHostname'));
-		});
+		$this->assertTrue(is_array($result->connection->getVersion()));
+		$this->assertTrue($result->connection->getClientVersion());
 	}
 
 	public function testDisconnect() {

@@ -6,7 +6,7 @@
  * @license       http://opensource.org/licenses/bsd-license.php The BSD License
  */
 
-namespace li3_couchbase\data\source;
+namespace li3_couchbase\extensions\data\source;
 
 use Exception;
 use Couchbase as CouchbaseExt;
