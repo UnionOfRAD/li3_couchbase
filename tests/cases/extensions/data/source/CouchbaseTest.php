@@ -33,7 +33,7 @@ class CouchbaseTest extends \lithium\test\Unit {
 	public function skip() {
 		$this->skipIf(!Couchbase::enabled(), 'The Couchbase extension is not loaded!');
 
-		$this->_dbConfig = Connections::get('test', array('config' => true));
+		$this->_dbConfig = Connections::get('test-couchbase', array('config' => true));
 		$hasDb = (isset($this->_dbConfig['type']) && $this->_dbConfig['type'] == 'Couchbase');
 		$message = 'Test database is either unavailable, or not a Couchbase connection!';
 		$this->skipIf(!$hasDb, $message);
@@ -48,11 +48,10 @@ class CouchbaseTest extends \lithium\test\Unit {
 
 	public function testDefaults() {
 		$expected = array(
-			'host'       => 'localhost',
-			'port'       => '8091',
+			'host'       => 'localhost:8091',
 			'login'      => null,
 			'password'   => null,
-			'bucket'     => 'default',
+			'database'     => 'default',
 			'persistent' => false,
 			'autoConnect' => true,
 			'init' => false
@@ -80,6 +79,22 @@ class CouchbaseTest extends \lithium\test\Unit {
 		$this->assertTrue($cb->isConnected());
 		$this->assertTrue($cb->disconnect());
 		$this->assertFalse($cb->isConnected());
+	}
+
+	public function testCreate() {
+
+	}
+
+	public function testRead() {
+
+	}
+
+	public function testUpdate() {
+
+	}
+
+	public function testDelete() {
+
 	}
 }
 
