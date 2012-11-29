@@ -18,7 +18,6 @@ use lithium\util\Set;
  */
 class Couchbase extends \lithium\data\Source {
 
-
 	/**
 	 * The Couchbase HTTP Service class instance.
 	 *
@@ -133,7 +132,6 @@ class Couchbase extends \lithium\data\Source {
 		} catch(Exception $e) {
 			throw new NetworkException("Could not connect to {$bucket} on {$host}.");
 		}
-
 		return $this->_isConnected = true;
 	}
 
@@ -201,14 +199,13 @@ class Couchbase extends \lithium\data\Source {
 
 			$args = $query->export($self, array('keys' => array('source', 'data')));
 			$data = Set::merge($args['data']['data'], $args['data']['update']);
-			$data['id'] = sha1(json_encode($data));
+			$data['id'] = empty($data['id']) ? sha1(json_encode($data)) : $data['id'];
 			$key = "{$args['source']}:{$data['id']}";
-
 			$result = $self->connection->set($key, json_encode($data), $options['expiry']);
 
 			if ($result) {
 				if ($query->entity()) {
-					$query->entity()->sync($data['id'], array(), array('materialize' => true));
+					$query->entity()->sync($data['id']);
 				}
 				return true;
 			}
@@ -236,11 +233,11 @@ class Couchbase extends \lithium\data\Source {
 				return null;
 			}
 			$key = "{$args['source']}:{$args['conditions']['id']}";
+
 			if ($result = json_decode($self->connection->get($key), true)) {
 				$config = compact('query') + array('exists' => true);
 				return $this->item($args['model'], array('data' => $result), $config);
 			}
-
 			return false;
 		});
 	}
@@ -266,7 +263,7 @@ class Couchbase extends \lithium\data\Source {
 			$result = $self->connection->set($key, json_encode($data), $options['expiry']);
 
 			if ($result) {
-				$query->entity() ? $query->entity()->sync($args['data']) : null;
+				$query->entity() ? $query->entity()->sync($data['id']) : null;
 				return true;
 			}
 			return false;
@@ -289,6 +286,7 @@ class Couchbase extends \lithium\data\Source {
 				return null;
 			}
 			$key = "{$args['source']}:{$args['data']['data']['id']}";
+
 			if ($result = $self->connection->delete($key)) {
 				if ($query->entity()) {
 					$query->entity()->sync(null, array(), array('dematerialize' => true));
