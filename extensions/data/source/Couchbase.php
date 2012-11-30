@@ -196,12 +196,11 @@ class Couchbase extends \lithium\data\Source {
 		return $this->_filter(__METHOD__, $params, function($self, $params) use ($_config) {
 			$query   = $params['query'];
 			$options = $params['options'];
-
-			$args = $query->export($self, array('keys' => array('source', 'data')));
-			$data = Set::merge($args['data']['data'], $args['data']['update']);
+			$source = $query->source();
+			$data = $query->data();
 			$data['id'] = empty($data['id']) ? sha1(json_encode($data)) : $data['id'];
-			$key = "{$args['source']}:{$data['id']}";
-			$result = $self->connection->set($key, json_encode($data), $options['expiry']);
+			$key = "{$source}:{$data['id']}";
+			$result = $self->connection->add($key, json_encode($data), $options['expiry']);
 
 			if ($result) {
 				if ($query->entity()) {
@@ -228,13 +227,16 @@ class Couchbase extends \lithium\data\Source {
 			$query   = $params['query'];
 			$options = $params['options'];
 			$args = $query->export($self);
+			$cond = $args['conditions'];
 
-			if (empty($args['conditions']['id'])) {
+			if (empty($cond['id'])) {
 				return null;
 			}
-			$key = "{$args['source']}:{$args['conditions']['id']}";
+			$callback = !empty($cond['callback']) ? $cond['conditions']['callback'] : null;
+			$cas = !empty($cond['cas']) ? $cond['cas'] : null;
+			$key = "{$args['source']}:{$cond['id']}";
 
-			if ($result = json_decode($self->connection->get($key), true)) {
+			if ($result = json_decode($self->connection->get($key, $callback, $cas), true)) {
 				$config = compact('query') + array('exists' => true);
 				return $this->item($args['model'], array('data' => $result), $config);
 			}
@@ -256,10 +258,9 @@ class Couchbase extends \lithium\data\Source {
 		return $this->_filter(__METHOD__, $params, function($self, $params) use ($_config) {
 			$query   = $params['query'];
 			$options = $params['options'];
-
-			$args = $query->export($self, array('keys' => array('source', 'data')));
-			$data = Set::merge($args['data']['data'], $args['data']['update']);
-			$key = "{$args['source']}:{$data['id']}";
+			$source = $query->source();
+			$data = $query->data();
+			$key = "{$source}:{$data['id']}";
 			$result = $self->connection->set($key, json_encode($data), $options['expiry']);
 
 			if ($result) {
