@@ -110,7 +110,7 @@ class CrudTest extends \lithium\test\Integration {
 	public function testDelete() {
 		$existing = Companies::find($this->id);
 		$this->assertTrue($existing->exists());
-		$this->assertTrue($existing->delete());
+		$this->assertTrue($existing->delete() == true);
 	}
 
 	public function testUpdateWithNewProperties() {
@@ -131,6 +131,7 @@ class CrudTest extends \lithium\test\Integration {
 		$expected = 'bar';
 		$result = $updated->foo;
 		$this->assertEqual($expected, $result);
+		$this->assertTrue($updated->delete() == true);
 	}
 
 

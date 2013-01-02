@@ -70,8 +70,9 @@ class CouchbaseTest extends \lithium\test\Unit {
 		$result = new Couchbase($this->_dbConfig);
 		$this->assertTrue($result->isConnected());
 
-		$this->assertTrue(is_array($result->connection->getVersion()));
-		$this->assertTrue($result->connection->getClientVersion());
+		$connections = (array) $result->connection->getVersion();
+		$this->assertEqual("2.0.0", array_pop($connections));
+		$this->assertEqual("1.1.0", $result->connection->getClientVersion());
 	}
 
 	public function testDisconnect() {

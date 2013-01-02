@@ -74,8 +74,8 @@ class Couchbase extends \lithium\data\Source {
 			'host'       => 'localhost:8091',
 			'login'      => null,
 			'password'   => null,
-			'database'     => 'default',
-			'persistent' => false
+			'database'   => 'default',
+			'persistent' => true
 		);
 		parent::__construct($config + $defaults);
 	}
