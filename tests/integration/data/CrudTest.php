@@ -96,7 +96,7 @@ class CrudTest extends \lithium\test\Integration {
 		$this->assertEqual($existing->name, 'Acme, Inc.');
 		$existing->name = 'Big Brother and the Holding Company';
 		$result = $existing->save();
-		$this->assertTrue($result);
+		$this->assertTrue($result->id);
 
 		$existing = Companies::find($this->id);
 

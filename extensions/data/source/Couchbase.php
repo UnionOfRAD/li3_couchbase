@@ -8,10 +8,8 @@
 
 namespace li3_couchbase\extensions\data\source;
 
-use Exception;
 use Couchbase as Couch;
 use lithium\core\NetworkException;
-use lithium\util\Set;
 
 /**
  * A data source adapter which allows you to connect to the Couchbase database engine.
@@ -120,17 +118,11 @@ class Couchbase extends \lithium\data\Source {
 	public function connect() {
 		$config = $this->_config;
 		$this->_isConnected = false;
-
-		$host = $config['host'];
-		$login = $config['login'];
-		$password = $config['password'];
-		$bucket = $config['database'];
-		$persistent = $config['persistent'];
-
+		extract($config);
 		try {
-			$this->connection = new Couch($host, $login, $password, $bucket, $persistent);
+			$this->connection = new Couch($host, $login, $password, $database, $persistent);
 		} catch(Exception $e) {
-			throw new NetworkException("Could not connect to {$bucket} on {$host}.");
+			throw new NetworkException("Could not connect to {$database} on {$host}.");
 		}
 		return $this->_isConnected = true;
 	}
@@ -196,15 +188,23 @@ class Couchbase extends \lithium\data\Source {
 		return $this->_filter(__METHOD__, $params, function($self, $params) use ($_config) {
 			$query   = $params['query'];
 			$options = $params['options'];
-			$source = $query->source();
+			extract($query->export($self, array('keys' => array(
+				'source', 'model', 'key'
+			))));
 			$data = $query->data();
-			$data['id'] = empty($data['id']) ? sha1(json_encode($data)) : $data['id'];
-			$key = "{$source}:{$data['id']}";
-			$result = $self->connection->add($key, json_encode($data), $options['expiry']);
+			$entity = $query->entity();
+			$keys = $model::key($entity);
+
+			$data['_source'] = $source;
+			$data[$key] = !empty($keys) ? current($keys)
+				: !empty($data[$key]) ? $data[$key]
+				: sha1(json_encode($data) + microtime());
+			$id = "{$source}:{$data[$key]}";
+			$result = $self->connection->add($id, json_encode($data), $options['expiry']);
 
 			if ($result) {
-				if ($query->entity()) {
-					$query->entity()->sync($data['id']);
+				if ($entity) {
+					$entity->sync($data[$key], $data);
 				}
 				return true;
 			}
@@ -226,19 +226,21 @@ class Couchbase extends \lithium\data\Source {
 		return $this->_filter(__METHOD__, $params, function($self, $params) use ($_config) {
 			$query   = $params['query'];
 			$options = $params['options'];
-			$args = $query->export($self);
-			$cond = $args['conditions'];
+			extract($query->export($self, array('keys' => array(
+				'source', 'model', 'conditions'
+			))));
+			$key = $model::key();
 
-			if (empty($cond['id'])) {
+			if (empty($conditions[$key])) {
 				return null;
 			}
-			$callback = !empty($cond['callback']) ? $cond['conditions']['callback'] : null;
-			$cas = !empty($cond['cas']) ? $cond['cas'] : null;
-			$key = "{$args['source']}:{$cond['id']}";
+			$conditions += array('callback' => null, 'cas' => null);
+			$key = "{$source}:{$conditions[$key]}";
+			$data = $self->connection->get($key, $conditions['callback'], $conditions['cas']);
 
-			if ($result = json_decode($self->connection->get($key, $callback, $cas), true)) {
+			if ($result = json_decode($data, true)) {
 				$config = compact('query') + array('exists' => true);
-				return $this->item($args['model'], array('data' => $result), $config);
+				return $this->item($model, array('data' => $result), $config);
 			}
 			return false;
 		});
@@ -251,20 +253,25 @@ class Couchbase extends \lithium\data\Source {
 		$this->_checkConnection();
 		$defaults = array('expiry' => 0);
 		$options += $defaults;
-
 		$params = compact('query', 'options');
 		$_config = $this->_config;
 
 		return $this->_filter(__METHOD__, $params, function($self, $params) use ($_config) {
 			$query   = $params['query'];
 			$options = $params['options'];
-			$source = $query->source();
+			extract($query->export($self, array('keys' => array(
+				'source', 'model', 'key'
+			))));
 			$data = $query->data();
-			$key = "{$source}:{$data['id']}";
-			$result = $self->connection->set($key, json_encode($data), $options['expiry']);
+			$entity = $query->entity();
+			$id = "{$source}:{$data[$key]}";
+			$result = $self->connection->set($id, json_encode($data), $options['expiry']);
 
 			if ($result) {
-				$query->entity() ? $query->entity()->sync($data['id']) : null;
+				if ($entity) {
+					$entity->sync($data[$key], $data);
+					return $entity;
+				}
 				return true;
 			}
 			return false;
@@ -281,30 +288,35 @@ class Couchbase extends \lithium\data\Source {
 		return $this->_filter(__METHOD__, $params, function($self, $params) use ($_config) {
 			$query   = $params['query'];
 			$options = $params['options'];
-			$args = $query->export($self, array('keys' => array('source', 'data')));
+			extract($query->export($self, array('keys' => array(
+				'source', 'model'
+			))));
+			$key = $model::key();
+			$data = $query->data();
+			$entity = $query->entity();
 
-			if (empty($args['data']['data']['id'])) {
+			if (empty($data[$key])) {
 				return null;
 			}
-			$key = "{$args['source']}:{$args['data']['data']['id']}";
+			$id = "{$source}:{$data[$key]}";
 
-			if ($result = $self->connection->delete($key)) {
-				if ($query->entity()) {
-					$query->entity()->sync(null, array(), array('dematerialize' => true));
+			if ($result = $self->connection->delete($id)) {
+				if ($entity) {
+					$entity->sync(null, array(), array('dematerialize' => true));
+					return $entity;
 				}
-				return $query->entity();
+				return true;
 			}
 			return false;
 		});
 	}
 
 	/**
-	 * A method dispatcher that allows direct calls to native methods in PHP's `Couchvase` object.
-	 *
+	 * A method dispatcher that allows direct calls to native methods in PHP's `Couchbase` object.
 	 *
 	 * For example (assuming this instance is stored in `Connections` as `'couchbase'`):
-	 * {{{// Manually repairs a MongoDB instance
-	 * Connections::get('couchbase')->getByKey($db); // returns null
+	 * {{{// Update the expiry time of an item
+	 * Connections::get('couchbase')->touch('key', strtotime('+1 week')); // returns null
 	 * }}}
 	 * @see See li3_couchbase\tests\mocks\MockCouchbase
 	 * @param string $method The name of native method to call. See the link above for available
@@ -319,10 +331,10 @@ class Couchbase extends \lithium\data\Source {
 		if (method_exists($this->connection, $method)) {
 			return call_user_func_array(array(&$this->connection, $method), $params);
 		}
-		if ((!$this->server)) {
+		if ((!$this->service)) {
 			return null;
 		}
-		return call_user_func_array(array(&$this->server, $method), $params);
+		return call_user_func_array(array(&$this->service, $method), $params);
 	}
 
 	/**
