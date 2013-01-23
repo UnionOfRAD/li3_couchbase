@@ -11,7 +11,7 @@ namespace li3_couchbase\tests\integration\data;
 use lithium\data\Connections;
 use li3_couchbase\extensions\data\source\Couchbase;
 use li3_couchbase\tests\mocks\models\Companies;
-use li3_couchbase\tests\mocks\models\CustomKeys;
+use li3_couchbase\tests\mocks\models\Custom;
 
 class CrudExtendedTest extends \lithium\test\Integration {
 
@@ -22,8 +22,8 @@ class CrudExtendedTest extends \lithium\test\Integration {
 	protected $_key = null;
 
 	public $data = array(
-		array('name' => 'StuffMart', 'active' => true),
-		array('name' => 'Ma \'n Pa\'s Data Warehousing & Bait Shop', 'active' => false)
+		array('name' => 'Marine Store', 'active' => true),
+		array('name' => 'Bait Shop', 'active' => false)
 	);
 
 	/**
@@ -62,67 +62,50 @@ class CrudExtendedTest extends \lithium\test\Integration {
 		//$this->db->connection->delete($this->_database);
 	}
 
-
 	public function testCreateType() {
-		$company = Companies::create(array(
-			'gimme' => 'type'
-		));
+		$company = Companies::create($this->data[0]);
 		$this->assertTrue($company->save());
+		$this->assertEqual("Marine Store", $company->name);
 		$this->assertEqual('companies', $company->_source);
 		$this->assertTrue($company->delete());
 	}
 
 	public function testCreateNoId() {
-		$company = Companies::create(array(
-			'who' => 'am i?'
-		));
-
+		$company = Companies::create($this->data[0]);
 		$this->assertTrue($company->save());
-		$this->assertTrue(!empty($company->id));
+		$this->assertTrue(40 == strlen($company->id));
 		$this->assertTrue($company->delete());
 	}
 
-	public function testCreateNoIdCustomKey() {
-		$custom = CustomKeys::create(array(
-			'how' => 'am I not myself?'
-		));
-		$this->assertTrue($custom->save());
-		$this->assertTrue(!empty($custom->my_identifier));
-		$this->assertTrue($custom->delete());
-	}
-
-	public function testCreateId() {
-		$company = Companies::create(array(
-			'id' => 'supercool'
-		));
-
+	public function testCreateWithId() {
+		$company = Companies::create(array('id' => 'my_id'));
 		$this->assertTrue($company->save());
-		$this->assertEqual('supercool', $company->id);
+		$this->assertEqual('my_id', $company->id);
 		$this->assertTrue($company->delete());
-	}
-
-	public function testCreateIdCustomKey() {
-		$custom = CustomKeys::create(array(
-			'my_identifier' => 'my_key'
-		));
-		$this->assertTrue($custom->save());
-		$this->assertEqual('my_key', $custom->my_identifier);
-		$this->assertTrue($custom->delete());
 	}
 
 	public function testCreateNoIdCollisionless() {
-		$company = Companies::create(array(
-			'name' => 'Acme'
-		));
+		$company = Companies::create($this->data[0]);
 		$this->assertTrue($company->save());
 
-		$second = Companies::create(array(
-			'name' => 'Acme'
-		));
+		$second = Companies::create($this->data[0]);
 		$this->assertTrue($second->save());
-
 		$this->assertNotEqual($company->id, $second->id);
 		$this->assertTrue($company->delete());
 		$this->assertTrue($second->delete());
+	}
+
+	public function testCreateNoIdCustomKey() {
+		$custom = Custom::create();
+		$this->assertTrue($custom->save());
+		$this->assertTrue(!empty($custom->my_key));
+		$this->assertTrue($custom->delete());
+	}
+
+	public function testCreateIdCustomKey() {
+		$custom = Custom::create(array('my_key' => 'something'));
+		$this->assertTrue($custom->save());
+		$this->assertEqual('something', $custom->my_key);
+		$this->assertTrue($custom->delete());
 	}
 }

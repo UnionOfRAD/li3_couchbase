@@ -2,14 +2,14 @@
 
 namespace li3_couchbase\tests\mocks\models;
 
-class CustomKeys extends \lithium\data\Model {
+class Custom extends \lithium\data\Model {
 
 	protected $_meta = array(
 		'connection' => 'test-couchbase',
-		'key' => 'my_identifier'
+		'key' => 'my_key'
 	);
 
 	protected $_schema = array(
-		'my_identifier' => array('type' => 'id')
+		'my_key' => array('type' => 'id')
 	);
 }
