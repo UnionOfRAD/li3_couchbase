@@ -251,6 +251,7 @@ class Couchbase extends \lithium\data\Source {
 			))));
 			$key = $model::key();
 
+			$viewName = '';
 			$prefix = (Environment::get() == 'production') ? '' : 'dev_';
 
 			if (!$conditions) {
@@ -283,7 +284,7 @@ class Couchbase extends \lithium\data\Source {
 
 			if ($result = json_decode($data, true)) {
 				$config = compact('query') + array('exists' => true);
-				return $this->item($model, array('data' => $result), $config);
+				return $self->item($model, array('data' => $result), $config);
 			}
 			return false;
 		});

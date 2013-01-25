@@ -145,7 +145,11 @@ class CrudExtendedTest extends \lithium\test\Integration {
 		$company1 = Companies::create($this->data[0]);
 		$company1->save();
 		$company2 = Companies::create($this->data[1]);
-		$company2->save();;
+		$company2->save();
+
+		$company = Companies::find($company1->id);
+		$data = $company->data();
+		$this->assertEqual('Marine Store', $data['name']);
 
 		$companies = Companies::find('by_active');
 		$this->assertEqual(2, count($companies->data()));
