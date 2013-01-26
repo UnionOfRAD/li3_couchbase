@@ -10,6 +10,8 @@ namespace li3_couchbase\extensions\data\source;
 
 use Couchbase as Couch;
 use lithium\core\NetworkException;
+use lithium\core\Environment;
+use lithium\util\Inflector;
 
 /**
  * A data source adapter which allows you to connect to the Couchbase database engine.
@@ -65,6 +67,13 @@ class Couchbase extends \lithium\data\Source {
 	protected $_autoConfig = array('schema', 'classes' => 'merge');
 
 	/**
+	 * List of views indexed by design document
+	 *
+	 * @var array
+	 */
+	protected $_views = array();
+
+	/**
 	 *
 	 */
 	public function __construct(array $config = array()) {
@@ -109,6 +118,17 @@ class Couchbase extends \lithium\data\Source {
 	 *         their respective properties in `Model`.
 	 */
 	public function configureClass($class) {
+		$pieces = explode('\\', $class);
+		$model  = array_pop($pieces);
+		$source = Inflector::tableize($model);
+		$prefix = (Environment::get() == 'production') ? '' : 'dev_';
+		$this->_views[$source] = json_decode($this->getDesignDoc("{$prefix}{$source}"), true);
+		$this->_views[$source] = $this->_views[$source]['views'];
+		if ($this->_views[$source]) {
+			foreach ($this->_views[$source] as $k => $v) {
+				$class::finder($k, array('conditions' => array('view' => $k)));
+			}
+		}
 		return array('schema' => array(), 'meta' => array('key' => 'id', 'locked' => false));
 	}
 
@@ -231,16 +251,40 @@ class Couchbase extends \lithium\data\Source {
 			))));
 			$key = $model::key();
 
-			if (empty($conditions[$key])) {
-				return null;
+			$viewName = '';
+			$prefix = (Environment::get() == 'production') ? '' : 'dev_';
+
+			if (!$conditions) {
+				$viewName = 'all';
 			}
+
+			if (!empty($conditions['view'])) {
+				$viewName = $conditions['view'];
+			}
+
+			$viewOptions = array('stale' => false);
+			if (isset($conditions['key'])) {
+				$viewOptions['key'] = $conditions['key'];
+			}
+
+			if ($viewName) {
+				$view = $self->connection->view($prefix . $source, $viewName, $viewOptions);
+				$records = array();
+				if (!empty($view['rows'])) {
+					foreach ($view['rows'] as $r) {
+						$records[$r['id']] = $r['value'];
+					}
+				}
+				return $self->item($model, $records, array('class' => 'set', 'exists' => true));
+			}
+
 			$conditions += array('callback' => null, 'cas' => null);
 			$key = "{$source}:{$conditions[$key]}";
 			$data = $self->connection->get($key, $conditions['callback'], $conditions['cas']);
 
 			if ($result = json_decode($data, true)) {
 				$config = compact('query') + array('exists' => true);
-				return $this->item($model, array('data' => $result), $config);
+				return $self->item($model, array('data' => $result), $config);
 			}
 			return false;
 		});
