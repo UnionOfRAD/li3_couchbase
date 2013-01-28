@@ -52,25 +52,6 @@ class CrudExtendedTest extends \lithium\test\Integration {
 	 * Creating the test database
 	 */
 	public function setUp() {
-		$views = array(
-			'views' =>
-			array(
-				'all' =>
-				array(
-					'map' =>
-					"function (doc, meta) { if(doc._source == 'companies') { emit(meta.id,
-					doc) }}",
-				),
-				'by_active' =>
-				array(
-					'map' =>
-					"function (doc, meta) { if(doc._source == 'companies') { emit(doc.active, doc
-					) }}",
-				),
-			),
-		);
-		$result = $this->db->setDesignDoc('dev_companies', json_encode($views));
-		$this->assertTrue($result);
 		//$this->db->connection->put($this->_database);
 	}
 
@@ -141,15 +122,31 @@ class CrudExtendedTest extends \lithium\test\Integration {
 		$this->assertTrue($company->delete());
 	}
 
+	public function testFindById() {
+		$company1 = Companies::create($this->data[0]);
+		$company1->save();
+		$company = Companies::find($company1->id);
+		$data = $company->data();
+		$this->assertEqual('Marine Store', $data['name']);
+		$company->delete();
+	}
+
+	public function testFindByStaticFinder() {
+		$company1 = Companies::create($this->data[0]);
+		$company1->save();
+		$company2 = Companies::create($this->data[1]);
+		$company2->save();
+		$company = Companies::by_active();
+		$this->assertEqual(2, count($company));
+		$company1->delete();
+		$company2->delete();
+	}
+
 	public function testFindByView() {
 		$company1 = Companies::create($this->data[0]);
 		$company1->save();
 		$company2 = Companies::create($this->data[1]);
 		$company2->save();
-
-		$company = Companies::find($company1->id);
-		$data = $company->data();
-		$this->assertEqual('Marine Store', $data['name']);
 
 		$companies = Companies::find('by_active');
 		$this->assertEqual(2, count($companies->data()));
@@ -157,8 +154,27 @@ class CrudExtendedTest extends \lithium\test\Integration {
 		$companies = Companies::find('all', array('conditions' => array('view' => 'by_active')));
 		$this->assertEqual(2, count($companies->data()));
 
+//		$companies = Companies::find('first', array('conditions' => array('view' => 'by_active')));
+//		$this->assertEqual(2, count($companies->data()));
+
 		$companies = Companies::find('by_active', array('conditions' => array('key' => false)));
 		$this->assertEqual(1, count($companies->data()));
+
+		$company1->delete();
+		$company2->delete();
+	}
+
+	public function testFindByViewAutocreate() {
+		$company1 = Companies::create($this->data[0]);
+		$company1->save();
+		$company2 = Companies::create($this->data[1]);
+		$company2->save();
+
+		$company = Companies::findAllByName('Marine Store');
+		$this->assertEqual(1, count($company->data()));
+
+		$company = Companies::findByName('Marine Store');
+		$this->assertEqual('Marine Store', $company['name']);
 
 		$company1->delete();
 		$company2->delete();

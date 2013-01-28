@@ -1,8 +1,8 @@
 <?php
 /**
- * li3_couchbase: A Couchbase datasource for Lithium.
+ * li3_couchbase: A Couchbase data source for Lithium.
  *
- * @copyright     Copyright 2012, Michael Nitschinger
+ * @copyright     Copyright 2013, Union Of RAD
  * @license       http://opensource.org/licenses/bsd-license.php The BSD License
  */
 
@@ -12,6 +12,7 @@ use Couchbase as Couch;
 use lithium\core\NetworkException;
 use lithium\core\Environment;
 use lithium\util\Inflector;
+use lithium\util\String;
 
 /**
  * A data source adapter which allows you to connect to the Couchbase database engine.
@@ -74,7 +75,22 @@ class Couchbase extends \lithium\data\Source {
 	protected $_views = array();
 
 	/**
+	 * Map of sources to classes
 	 *
+	 * @var array
+	 */
+	protected $_classMap = array();
+
+	/**
+	 * Design document prefix
+	 *
+	 * @var string
+	 */
+	public $prefix = '';
+
+	/**
+	 * Constructor.
+	 * @param array $config
 	 */
 	public function __construct(array $config = array()) {
 		$defaults = array(
@@ -84,6 +100,7 @@ class Couchbase extends \lithium\data\Source {
 			'database'   => 'default',
 			'persistent' => true
 		);
+		$this->prefix = (Environment::get() == 'production') ? '' : 'dev_';
 		parent::__construct($config + $defaults);
 	}
 
@@ -121,19 +138,35 @@ class Couchbase extends \lithium\data\Source {
 		$pieces = explode('\\', $class);
 		$model  = array_pop($pieces);
 		$source = Inflector::tableize($model);
-		$prefix = (Environment::get() == 'production') ? '' : 'dev_';
-		$this->_views[$source] = json_decode($this->getDesignDoc("{$prefix}{$source}"), true);
-		$this->_views[$source] = $this->_views[$source]['views'];
-		if ($this->_views[$source]) {
-			foreach ($this->_views[$source] as $k => $v) {
-				$class::finder($k, array('conditions' => array('view' => $k)));
-			}
-		}
+		$this->_classMap[$source] = $class;
+		$this->registerViews($source);
 		return array('schema' => array(), 'meta' => array('key' => 'id', 'locked' => false));
 	}
 
 	/**
+	 * Introspects Couchbase for views, and automatically registers Model finders
 	 *
+	 * @param $source Couchbase view name
+	 */
+	public function registerViews($source) {
+		$class = $this->_classMap[$source];
+		$this->_views[$source] = json_decode($this->getDesignDoc("{$this->prefix}{$source}"),
+			true);
+		if (isset($this->_views[$source])) {
+			$this->_views[$source] = $this->_views[$source]['views'];
+			if ($this->_views[$source]) {
+				foreach ($this->_views[$source] as $k => $v) {
+					$class::finder($k, array('conditions' => array('view' => $k)));
+				}
+			}
+		}
+	}
+
+	/**
+	 * Connects to the database using the options provided to the class constructor.
+	 *
+	 * @return boolean Returns `true` if a database connection could be established, otherwise
+	 *         `false`.
 	 */
 	public function connect() {
 		$config = $this->_config;
@@ -148,7 +181,9 @@ class Couchbase extends \lithium\data\Source {
 	}
 
 	/**
+	 * Disconnects the adapter from the database.
 	 *
+	 * @return boolean Returns `true` on success, else `false`.
 	 */
 	public function disconnect() {
 		$this->_isConnected = false;
@@ -157,14 +192,22 @@ class Couchbase extends \lithium\data\Source {
 	}
 
 	/**
+	 * Returns an array of object types accessible through this database.
 	 *
+	 * @param object $class
+	 * @return void
 	 */
 	public function sources($class = null) {
 		return array();
 	}
 
 	/**
+	 * Describe database
 	 *
+	 * @param object $collection
+	 * @param array $schema Any schema data pre-defined by the model.
+	 * @param array $meta
+	 * @return void
 	 */
 	public function describe($collection, $fields = array(), array $meta = array()) {
 		if (!$fields && ($func = $this->_schema)) {
@@ -189,13 +232,25 @@ class Couchbase extends \lithium\data\Source {
 				return 0;
 		}
 	}
+
 	/**
+	 * Defines or modifies the default settings of a relationship between two models.
 	 *
+	 * @param string $class the primary model of the relationship
+	 * @param string $type the type of the relationship (hasMany, hasOne, belongsTo)
+	 * @param string $name the name of the relationship
+	 * @param array $config relationship options
+	 * @return array Returns an array containing the configuration for a model relationship.
 	 */
 	public function relationship($class, $type, $name, array $options = array()) {}
 
 	/**
+	 * Create new document.
 	 *
+	 * @param string $query
+	 * @param array $options
+	 * @return boolean
+	 * @filter
 	 */
 	public function create($query, array $options = array()) {
 		$this->_checkConnection();
@@ -233,7 +288,55 @@ class Couchbase extends \lithium\data\Source {
 	}
 
 	/**
+	 * Returns an array of views for a given source
 	 *
+	 * @param string $source
+	 * @return array
+	 */
+	public function views($source = '') {
+		return ($source) ? $this->_views[$source] : $this->_views;
+	}
+
+	/**
+	 * Creates a new Couchbase view and re-registers Model finders
+	 *
+	 * @param string $source
+	 * @param string $field
+	 */
+	public function createView($source, $field) {
+		$views = json_decode($this->getDesignDoc("{$this->prefix}{$source}"), true);
+		$views['views']["by_{$field}"] = array(
+			'map' =>
+			"function (doc, meta) { if(doc._source == '{$source}') { emit(doc.{$field}, doc) }}",
+		);
+		$this->setDesignDoc("{$this->prefix}{$source}", json_encode($views));
+		$this->registerViews($source);
+	}
+
+	/**
+	 * Handle conditions.
+	 *
+	 * @param string $conditions
+	 * @param string $context
+	 * @return array
+	 */
+	public function conditions($conditions, $context) {
+		if (isset($conditions['view']) && $conditions['view'] == 'all') {
+			unset($conditions['view']);
+		}
+		if (empty($conditions)) {
+			$conditions['view'] = 'all';
+		}
+		return $conditions;
+	}
+
+	/**
+	 * Read from document.
+	 *
+	 * @param string $query
+	 * @param array $options
+	 * @return object
+	 * @filter
 	 */
 	public function read($query, array $options = array()) {
 		$this->_checkConnection();
@@ -252,23 +355,29 @@ class Couchbase extends \lithium\data\Source {
 			$key = $model::key();
 
 			$viewName = '';
-			$prefix = (Environment::get() == 'production') ? '' : 'dev_';
+			$viewOptions = array('stale' => false);
 
-			if (!$conditions) {
-				$viewName = 'all';
-			}
-
-			if (!empty($conditions['view'])) {
+			if (!empty($conditions[$key])) {
+				// nada
+			} elseif (empty($conditions['view'])) {
+				$field = key($conditions);
+				$viewName = "by_{$field}";
+				$viewOptions['key'] = array_shift($conditions);
+			} else {
 				$viewName = $conditions['view'];
 			}
 
-			$viewOptions = array('stale' => false);
+			if ($viewName && !array_key_exists($viewName, $self->views($source))) {
+				$self->createView($source, $field);
+			}
+
 			if (isset($conditions['key'])) {
 				$viewOptions['key'] = $conditions['key'];
 			}
 
 			if ($viewName) {
-				$view = $self->connection->view($prefix . $source, $viewName, $viewOptions);
+				$view = $self->connection->view("{$self->prefix}{$source}", $viewName,
+					$viewOptions);
 				$records = array();
 				if (!empty($view['rows'])) {
 					foreach ($view['rows'] as $r) {
@@ -291,7 +400,12 @@ class Couchbase extends \lithium\data\Source {
 	}
 
 	/**
+	 * Update document.
 	 *
+	 * @param string $query
+	 * @param array $options
+	 * @return boolean
+	 * @filter
 	 */
 	public function update($query, array $options = array()) {
 		$this->_checkConnection();
@@ -323,7 +437,12 @@ class Couchbase extends \lithium\data\Source {
 	}
 
 	/**
+	 * Delete document.
 	 *
+	 * @param string $query
+	 * @param array $options
+	 * @return boolean
+	 * @filter
 	 */
 	public function delete($query, array $options = array()) {
 		$params = compact('query', 'options');
