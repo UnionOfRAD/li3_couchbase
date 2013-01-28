@@ -314,6 +314,23 @@ class Couchbase extends \lithium\data\Source {
 	}
 
 	/**
+	 * Handle conditions.
+	 *
+	 * @param string $conditions
+	 * @param string $context
+	 * @return array
+	 */
+	public function conditions($conditions, $context) {
+		if (isset($conditions['view']) && $conditions['view'] == 'all') {
+			unset($conditions['view']);
+		}
+		if (empty($conditions)) {
+			$conditions['view'] = 'all';
+		}
+		return $conditions;
+	}
+
+	/**
 	 * Read from document.
 	 *
 	 * @param string $query
@@ -339,14 +356,6 @@ class Couchbase extends \lithium\data\Source {
 
 			$viewName = '';
 			$viewOptions = array('stale' => false);
-
-			if (isset($conditions['view']) && $conditions['view'] == 'all') {
-				unset($conditions['view']);
-			}
-
-			if (empty($conditions)) {
-				$conditions['view'] = 'all';
-			}
 
 			if (!empty($conditions[$key])) {
 				// nada

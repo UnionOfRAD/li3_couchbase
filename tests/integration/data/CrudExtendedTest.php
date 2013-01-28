@@ -128,7 +128,7 @@ class CrudExtendedTest extends \lithium\test\Integration {
 		$company = Companies::find($company1->id);
 		$data = $company->data();
 		$this->assertEqual('Marine Store', $data['name']);
-		$company1->delete();
+		$company->delete();
 	}
 
 	public function testFindByStaticFinder() {
