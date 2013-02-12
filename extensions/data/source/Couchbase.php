@@ -98,9 +98,16 @@ class Couchbase extends \lithium\data\Source {
 			'login'      => null,
 			'password'   => null,
 			'database'   => 'default',
-			'persistent' => true
+			'persistent' => true,
+			'autoViews'  => true,
 		);
-		$this->prefix = (Environment::get() == 'production') ? '' : 'dev_';
+		if (Environment::get() == 'production') {
+			$this->prefix = '';
+			$defaults['createViews'] = false;
+		} else {
+			$this->prefix = 'dev_';
+			$defaults['createViews'] = true;
+		}
 		parent::__construct($config + $defaults);
 	}
 
@@ -303,12 +310,19 @@ class Couchbase extends \lithium\data\Source {
 	 * @param string $source
 	 * @param string $field
 	 */
-	public function createView($source, $field) {
+	public function createView($source, $field = '') {
 		$views = json_decode($this->getDesignDoc("{$this->prefix}{$source}"), true);
-		$views['views']["by_{$field}"] = array(
-			'map' =>
-			"function (doc, meta) { if(doc._source == '{$source}') { emit(doc.{$field}, doc) }}",
-		);
+		if ($field == '') {
+			$views['views']['all'] = array(
+				'map' =>
+				"function (doc, meta) { if(doc._source == '{$source}') { emit(meta.id, doc) }}"
+			);
+		} else{
+			$views['views']["by_{$field}"] = array(
+				'map' =>
+				"function (doc, meta) { if(doc._source == '{$source}') { emit(doc.{$field}, doc) }}",
+			);
+		}
 		$this->setDesignDoc("{$this->prefix}{$source}", json_encode($views));
 		$this->registerViews($source);
 	}
@@ -321,13 +335,101 @@ class Couchbase extends \lithium\data\Source {
 	 * @return array
 	 */
 	public function conditions($conditions, $context) {
+		return $conditions;
+	}
+
+	/**
+	 * Desperately tries to determine what view should be used and/or created
+	 *
+	 * @param $source
+	 * @param $conditions
+	 * @param $options
+	 * @return array
+	 */
+	public function autoView($params = array()) {
+		extract($params);
+		$viewOptionsDefaults = array(
+			'debug' => null,
+			'descending' => null,
+			'endkey' => null,
+			'endkey_docid' => null,
+			'full_set' => null,
+			'group' => null,
+			'group_level' => null,
+			'inclusive_end' => null,
+			'key' => null,
+			'keys' => null,
+			'limit' => null,
+			'on_error' => null,
+			'reduce' => null,
+			'skip' => null,
+			'stale' => false,
+			'startkey' => null,
+			'startkey_docid' => null
+		);
+		$viewOptions = array_intersect_key($options, $viewOptionsDefaults);
+		$viewOptions = array_filter($viewOptions + $viewOptionsDefaults, function ($v) {
+			return !is_null($v);
+		});
+
+		/**
+		 * If filtering by the key in the 'all' view, prepend the _source name until this lib
+		 * can be refactored to not need such a hack
+		 */
+		if (isset($conditions['view']) && $conditions['view'] == 'all') {
+			if (isset($viewOptions['key'])) {
+				$viewOptions['key'] = "{$source}:{$viewOptions['key']}";
+			}
+		}
+
+		$viewName = '';
+		$field = '';
+
+		/**
+		 * Removes 'all' view from conditions until it can be determined if there are filterable
+		 * conditions and the 'all' view is appropriate. All 'all' view becomes irrelevant in
+		 * situations like findAllBy$Field, since that it now the actual view that will be
+		 * queried.
+		 */
 		if (isset($conditions['view']) && $conditions['view'] == 'all') {
 			unset($conditions['view']);
 		}
+
+		/**
+		 * If there are no other conditions, then clearly the user is looking for all records
+		 * and no filtering. Here's we'll set the view to 'all' and it will be caught below.
+		 */
 		if (empty($conditions)) {
 			$conditions['view'] = 'all';
 		}
-		return $conditions;
+
+		/**
+		 * Matches Model::find($id);
+		 */
+		if (!empty($conditions[$key])) {
+			/**
+			 * Matches Model::find('by_field'), in that lithium believes this to be an id
+			 * because the view has not been created or registered as a finder.
+			 */
+			if (strstr($conditions[$key], 'by_')) {
+				$field = str_replace('by_', '', $conditions[$key]);
+				$viewName = $conditions[$key];
+				unset($conditions[$key]);
+			}
+		} elseif (empty($conditions['view'])) {
+			$field = key($conditions);
+			$viewName = "by_{$field}";
+			$viewOptions['key'] = array_shift($conditions);
+		} else {
+			$viewName = $conditions['view'];
+		}
+
+		$viewExists = array_key_exists($viewName, $this->views($source));
+		if ($_config['createViews'] && $viewName && !$viewExists) {
+			$this->createView($source, $field);
+		}
+
+		return compact('conditions', 'viewName', 'viewOptions');
 	}
 
 	/**
@@ -340,7 +442,9 @@ class Couchbase extends \lithium\data\Source {
 	 */
 	public function read($query, array $options = array()) {
 		$this->_checkConnection();
-		$defaults = array('expiry' => 0);
+		$defaults = array(
+			'expiry' => 0,
+		);
 		$options += $defaults;
 
 		$params = compact('query', 'options');
@@ -352,32 +456,18 @@ class Couchbase extends \lithium\data\Source {
 			extract($query->export($self, array('keys' => array(
 				'source', 'model', 'conditions'
 			))));
+
 			$key = $model::key();
 
 			$viewName = '';
-			$viewOptions = array('stale' => false);
+			$viewOptions = '';
 
-			if (!empty($conditions[$key])) {
-				// nada
-			} elseif (empty($conditions['view'])) {
-				$field = key($conditions);
-				$viewName = "by_{$field}";
-				$viewOptions['key'] = array_shift($conditions);
-			} else {
-				$viewName = $conditions['view'];
-			}
-
-			if ($viewName && !array_key_exists($viewName, $self->views($source))) {
-				$self->createView($source, $field);
-			}
-
-			if (isset($conditions['key'])) {
-				$viewOptions['key'] = $conditions['key'];
+			if ($_config['autoViews']) {
+				extract($self->autoView(compact('_config', 'source', 'key', 'conditions', 'options')));
 			}
 
 			if ($viewName) {
-				$view = $self->connection->view("{$self->prefix}{$source}", $viewName,
-					$viewOptions);
+				$view = $self->connection->view("{$self->prefix}{$source}", $viewName, $viewOptions);
 				$records = array();
 				if (!empty($view['rows'])) {
 					foreach ($view['rows'] as $r) {
@@ -423,6 +513,7 @@ class Couchbase extends \lithium\data\Source {
 			$data = $query->data();
 			$entity = $query->entity();
 			$id = "{$source}:{$data[$key]}";
+			$data['_source'] = $source;
 			$result = $self->connection->set($id, json_encode($data), $options['expiry']);
 
 			if ($result) {
