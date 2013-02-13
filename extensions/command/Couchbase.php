@@ -32,23 +32,18 @@ class Couchbase extends \lithium\console\Command {
 	/**
 	 * Loads design docs into Couchbase
 	 *
-	 * @todo Fix Iterator mess. I'm pretty sure I've done it wrong in my haste.
 	 */
 	public function import() {
 		$data = array();
-		$dir = new \RecursiveDirectoryIterator($this->viewPath);
-		foreach ($dir as $fileinfo) {
-			if ($fileinfo->isDir()) {
-				$viewDir = new \RecursiveDirectoryIterator($fileinfo->getPathname());
-				foreach ($viewDir as $fi) {
-					$scripts = new \RecursiveDirectoryIterator($fi->getPathName());
-					foreach ($scripts as $f) {
-						$fn = str_replace('.js', '', $f->getFilename());
-						$data[$fileinfo->getFilename()]['views'][$fi->getFilename()][$fn] =
-							file_get_contents($f->getPathname());
-					}
-				}
-
+		$dir  = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->viewPath));
+		foreach ($dir as $k => $v) {
+			if (!in_array($v->getFilename(), array('.', '..'))) {
+				$pieces = explode('/', $k);
+				$file   = array_pop($pieces);
+				$view   = array_pop($pieces);
+				$design = array_pop($pieces);
+				$file   = str_replace('.js', '', $file);
+				$data[$design]['views'][$view][$file] = file_get_contents($v->getPathname());
 			}
 		}
 		foreach ($data as $design => $v) {
