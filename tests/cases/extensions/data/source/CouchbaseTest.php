@@ -53,7 +53,8 @@ class CouchbaseTest extends \lithium\test\Unit {
 			'autoConnect' => true,
 			'init'        => false,
 			'autoViews'   => true,
-			'createViews' => true
+			'createViews' => true,
+			'prefix'      => 'dev_'
 		);
 
 		$cb = new Couchbase(array('init' => false));

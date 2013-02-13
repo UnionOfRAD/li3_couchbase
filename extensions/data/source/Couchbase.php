@@ -94,21 +94,17 @@ class Couchbase extends \lithium\data\Source {
 	 */
 	public function __construct(array $config = array()) {
 		$defaults = array(
-			'host'       => 'localhost:8091',
-			'login'      => null,
-			'password'   => null,
-			'database'   => 'default',
-			'persistent' => true,
-			'autoViews'  => true,
+			'host'        => 'localhost:8091',
+			'login'       => null,
+			'password'    => null,
+			'database'    => 'default',
+			'persistent'  => true,
+			'autoViews'   => true,
+			'createViews' => true,
+			'prefix'      => 'dev_'
 		);
-		if (Environment::get() == 'production') {
-			$this->prefix = '';
-			$defaults['createViews'] = false;
-		} else {
-			$this->prefix = 'dev_';
-			$defaults['createViews'] = true;
-		}
 		parent::__construct($config + $defaults);
+		$this->prefix = $this->_config['prefix'];
 	}
 
 	/**
