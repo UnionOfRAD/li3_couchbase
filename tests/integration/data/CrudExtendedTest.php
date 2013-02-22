@@ -9,6 +9,7 @@
 namespace li3_couchbase\tests\integration\data;
 
 use lithium\data\Connections;
+use lithium\util\Set;
 use li3_couchbase\extensions\data\source\Couchbase;
 use li3_couchbase\tests\mocks\models\Companies;
 use li3_couchbase\tests\mocks\models\Custom;
@@ -22,8 +23,9 @@ class CrudExtendedTest extends \lithium\test\Integration {
 	protected $_key = null;
 
 	public $data = array(
-		array('name' => 'Marine Store', 'active' => true),
-		array('name' => 'Bait Shop', 'active' => false)
+		array('name' => 'Marine Store', 'active' => true, 'founded' => 2012),
+		array('name' => 'Bait Shop', 'active' => false, 'founded' => 2013),
+		array('name' => 'Tackle Shack', 'active' => true, 'founded' => 2013)
 	);
 
 	/**
@@ -43,6 +45,7 @@ class CrudExtendedTest extends \lithium\test\Integration {
 		$this->skipIf(!$isAvailable, "No {$connection} connection available.");
 
 		$this->db = Connections::get($connection);
+		$this->config = $this->db->_config;
 		$this->_database = $this->config['database'];
 
 		$this->_key = Companies::key();
@@ -52,7 +55,44 @@ class CrudExtendedTest extends \lithium\test\Integration {
 	 * Creating the test database
 	 */
 	public function setUp() {
-		//$this->db->connection->put($this->_database);
+		static $flushed = false;
+		if (!$flushed) {
+			$this->cluster = new \CouchbaseClusterManager($this->config['host'],
+				$this->config['login'],
+				$this->config['password']
+			);
+			if ($this->config['database'] !== 'li3-test') {
+				throw new \Exception('Create a new bucket `li3-test` and edit `database` li3_couchbase/config/bootstrap.php');
+			}
+			if (!in_array('li3-test', $this->_getBuckets())) {
+				throw new \Exception('Create a new bucket `li3-test` and edit `database` li3_couchbase/config/bootstrap.php');
+			}
+			if ($this->config['database'] == 'default') {
+				throw new \Exception('Refusing to flush default bucket. Create a different one.');
+			}
+			$this->db->flush();
+			/**
+			 * @todo Work out errors in automatic bucket creation/deletion
+			 */
+			/**
+			$buckets = $this->_getBuckets();
+			if (in_array('li3-test', $buckets)) {
+				$this->cluster->deleteBucket('li3-test');
+			}
+			$this->cluster->createBucket('li3-test',
+				array(
+					"type" => "couchbase",
+					"quota" => 100,
+					"replicas" => 0,
+					"enable_flush" => 1,
+					"parallel_compaction" => true,
+					"auth" => "sasl",
+					//"password" => "foobar"
+				)
+			);
+			**/
+			$flushed = true;
+		}
 	}
 
 	/**
@@ -60,6 +100,19 @@ class CrudExtendedTest extends \lithium\test\Integration {
 	 */
 	public function tearDown() {
 		//$this->db->connection->delete($this->_database);
+	}
+
+	/**
+	 * Returns an array of bucket names retrieved from cluster
+	 *
+	 * @return array
+	 */
+	protected function _getBuckets() {
+		$info = json_decode($this->cluster->getInfo());
+		$bucketUrl = "http://{$info->nodes[0]->hostname}{$info->buckets->uri}";
+		$bucketData = json_decode(file_get_contents($bucketUrl), true);
+		$buckets = Set::extract($bucketData, '/name');
+		return $buckets;
 	}
 
 	public function testCreateType() {
@@ -142,6 +195,23 @@ class CrudExtendedTest extends \lithium\test\Integration {
 		$company2->delete();
 	}
 
+	public function testFindByNativeParameters() {
+		$company1 = Companies::create($this->data[0]);
+		$company1->save();
+		$company2 = Companies::create($this->data[1]);
+		$company2->save();
+		$company3 = Companies::create($this->data[2]);
+		$company3->save();
+
+		// when using findAll and filtering by key, special key prepending happens internally
+		$companies = Companies::find('all', array('key' => $company3->id));
+		$this->assertEqual(1, count($companies));
+
+		$company1->delete();
+		$company2->delete();
+		$company3->delete();
+	}
+
 	public function testFindByView() {
 		$company1 = Companies::create($this->data[0]);
 		$company1->save();
@@ -157,9 +227,6 @@ class CrudExtendedTest extends \lithium\test\Integration {
 //		$companies = Companies::find('first', array('conditions' => array('view' => 'by_active')));
 //		$this->assertEqual(2, count($companies->data()));
 
-		$companies = Companies::find('by_active', array('conditions' => array('key' => false)));
-		$this->assertEqual(1, count($companies->data()));
-
 		$company1->delete();
 		$company2->delete();
 	}
@@ -170,8 +237,8 @@ class CrudExtendedTest extends \lithium\test\Integration {
 		$company2 = Companies::create($this->data[1]);
 		$company2->save();
 
-		$company = Companies::findAllByName('Marine Store');
-		$this->assertEqual(1, count($company->data()));
+		$companies = Companies::findAllByName('Marine Store');
+		$this->assertEqual(1, count($companies->data()));
 
 		$company = Companies::findByName('Marine Store');
 		$this->assertEqual('Marine Store', $company['name']);
